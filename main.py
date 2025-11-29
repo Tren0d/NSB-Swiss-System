@@ -163,7 +163,6 @@ def limited_pairing(teams):
 
 def greedy_pairing(teams):
     """Жадный алгоритм парирования - быстрый для небольшого числа команд"""
-    shuffle(teams)
     teams_sorted = sorted(teams, key=lambda t: t.score, reverse=True)
     pairs = []
     used = set()
@@ -208,12 +207,15 @@ def set_pairings(teams):
         jurors = Team("Jurors", mode([t.score for t in teams_copy]) if teams_copy else 0)
         teams_copy.append(jurors)
 
+    teams_sorted = sorted(teams, key=lambda t: t.score, reverse=True)
+    best_possible_score = 0
+    for i in range(0,len(teams),2):
+        best_possible_score += (teams_sorted[i].score - teams_sorted[i+1].score) ** 2
     best_score = 100000000
     best_pairs = None
-    best_possible_score = pairing_score(greedy_pairing(teams))
     times = 0
 
-    while best_score > best_possible_score and times < 1e8:
+    while best_score > best_possible_score and times < 1000000:
         pairing = limited_pairing(teams)
         score = pairing_score(pairing)
         if score < best_score:
@@ -230,6 +232,7 @@ def assign_jury_to_matches(pairs, jury_list, round_num):
     """Распределяет жюри по боям с учетом ограничений"""
     matches_with_jury = []
     unassigned_matches = []
+    shuffle(jury_list)
     
     # Создаем счетчик боев для текущего раунда
     current_round_matches = defaultdict(int)
@@ -297,7 +300,7 @@ def assign_jury_to_matches(pairs, jury_list, round_num):
     return matches_with_jury, unassigned_matches
 
 
-def print_pairing_quality(pairs, teams_dict):
+def print_pairing_quality(pairs):
     """Выводит информацию о качестве паросочетания"""
     print("\n📊 Качество паросочетания:")
     
@@ -305,7 +308,7 @@ def print_pairing_quality(pairs, teams_dict):
     replays = 0
     
     for team1, team2 in pairs:
-        diff = abs(team1.score - team2.score)
+        diff = (team1.score - team2.score) ** 2
         total_diff += diff
         
         if have_played_before(team1, team2):
@@ -314,15 +317,10 @@ def print_pairing_quality(pairs, teams_dict):
         elif diff > 1.0:
             print(f"  ⚡ {team1.name} ({team1.score:.1f}) vs {team2.name} ({team2.score:.1f}) - разница: {diff:.2f}")
     
-    avg_diff = total_diff / len(pairs) if pairs else 0
-    print(f"\n  Средняя разница в очках: {avg_diff:.2f}")
+    print(f"\n  Средняя разница в очках: {total_diff:.3f}")
     print(f"  Повторных встреч: {replays}")
     
-    if replays == 0 and avg_diff < 0.5:
-        print("  ✅ Отличное паросочетание!")
-    elif replays == 0 and avg_diff < 1.0:
-        print("  ✅ Хорошее паросочетание")
-    elif replays > 0:
+    if replays > 0:
         print("  ⚠️  Есть повторные встречи")
     
     print()
@@ -343,7 +341,7 @@ def print_round_schedule(matches_with_jury, round_num, teams_dict):
         team1_score = teams_dict.get(team1_name).score if team1_name in teams_dict else 0
         team2_score = teams_dict.get(team2_name).score if team2_name in teams_dict else 0
         
-        print(f"{team1_name:25} ({team1_score:.1f}) vs {team2_name:25} ({team2_score:.1f}) | {jury}")
+        print(f"{team1_name:27} ({team1_score:.2f}) vs {team2_name:27} ({team2_score:.2f}) | {jury}")
     
     print(f"{'='*80}\n")
 
@@ -396,25 +394,10 @@ if __name__ == "__main__":
     # Создаем пары
     teams_list = list(teams_dict.values())
     
-    # Выбор метода парирования
-    if len(teams_list) > 12:
-        print(f"\n🚀 Автоматически выбран жадный алгоритм (команд: {len(teams_list)})")
-        pairs = set_pairings(teams_list)
-    else:
-        print(f"\nКоманд: {len(teams_list)}")
-        print("Выберите метод парирования:")
-        print("1. Жадный алгоритм (быстро, хорошее качество)")
-        print("2. Случайный поиск (медленнее, может найти лучше)")
-        
-        choice = input("Ваш выбор (Enter = жадный): ").strip()
-        
-        if choice == '2':
-            pairs = set_pairings(teams_list)
-        else:
-            pairs = set_pairings(teams_list)
+    pairs = set_pairings(teams_list)
     
     # Показываем качество паросочетания
-    print_pairing_quality(pairs, teams_dict)
+    print_pairing_quality(pairs)
     
     # Распределяем жюри
     if jury_list:
@@ -431,22 +414,6 @@ if __name__ == "__main__":
         # Сохраняем в CSV
         save_results_to_csv(matches_with_jury, 'results.csv', append=True)
         print("✅ Результаты сохранены в results.csv")
-        
-        # Статистика жюри
-        print("\nСтатистика жюри (всего боев):")
-        for jury in sorted(jury_list, key=lambda j: j.rounds_count, reverse=True):
-            print(f"  {jury.name}: {jury.rounds_count} боев")
-        
-        # Статистика текущего раунда
-        print(f"\nРаспределение в раунде {current_round}:")
-        round_distribution = defaultdict(int)
-        for match in matches_with_jury:
-            jury_name = match['jury'].replace(" (конфликт!)", "")
-            round_distribution[jury_name] += 1
-        
-        for jury_name, count in sorted(round_distribution.items(), key=lambda x: x[1], reverse=True):
-            conflict_marker = " ⚠️" if "(конфликт!)" in str([m['jury'] for m in matches_with_jury if jury_name in m['jury']]) else ""
-            print(f"  {jury_name}: {count} боев{conflict_marker}")
     else:
         print("⚠️  Жюри не загружены. Создаются пары без назначения жюри.")
         for team1, team2 in pairs:
