@@ -130,26 +130,77 @@ def save_results_to_csv(pairs, filename='results.csv', append=True):
             writer.writerow(pair_info)
 
 
-def generate_pairings(teams):
-    """Генерирует все возможные паросочетания"""
-    if not teams:
-        yield []
-        return
-
-    a = teams[0]
-    for i in range(1, len(teams)):
-        b = teams[i]
-        rest = teams[1:i] + teams[i+1:]
-        for pairs in generate_pairings(rest):
-            yield [(a, b)] + pairs
+def have_played_before(team1, team2):
+    """Проверяет, играли ли команды друг с другом ранее"""
+    return any(opponent == team2.name for opponent, _ in team1.opponents)
 
 
 def pairing_score(pairs):
     """Оценивает качество паросочетания (меньше = лучше)"""
-    return sum((a.score - b.score) ** 2 for a, b in pairs)
+    score = 0
+    for a, b in pairs:
+        # Штраф за разницу в очках (чем меньше, тем лучше)
+        score += (a.score - b.score) ** 2
+        # Большой штраф, если команды уже играли друг с другом
+        if have_played_before(a, b):
+            score += 1000
+    return score
 
 
-def set_pairings(teams):
+def greedy_pairing(teams):
+    """Жадный алгоритм парирования - быстрый для небольшого числа команд"""
+    teams_sorted = sorted(teams, key=lambda t: t.score, reverse=True)
+    pairs = []
+    used = set()
+    
+    for i, team1 in enumerate(teams_sorted):
+        if team1.name in used:
+            continue
+        
+        best_opponent = None
+        best_score_diff = float('inf')
+        
+        # Ищем лучшего оппонента среди оставшихся команд
+        for team2 in teams_sorted[i+1:]:
+            if team2.name in used:
+                continue
+            
+            # Оцениваем качество пары
+            score_diff = abs(team1.score - team2.score)
+            played_before = have_played_before(team1, team2)
+            
+            # Если команды уже играли, добавляем большой штраф
+            if played_before:
+                score_diff += 100
+            
+            if score_diff < best_score_diff:
+                best_score_diff = score_diff
+                best_opponent = team2
+        
+        if best_opponent:
+            pairs.append((team1, best_opponent))
+            used.add(team1.name)
+            used.add(best_opponent.name)
+    
+    return pairs
+
+
+def generate_limited_pairings(teams, max_attempts=1000):
+    """Генерирует ограниченное количество случайных паросочетаний"""
+    teams_copy = teams.copy()
+    
+    for _ in range(max_attempts):
+        shuffle(teams_copy)
+        pairs = []
+        
+        for i in range(0, len(teams_copy), 2):
+            if i + 1 < len(teams_copy):
+                pairs.append((teams_copy[i], teams_copy[i+1]))
+        
+        yield pairs
+
+
+def set_pairings(teams, use_greedy=True):
     """Создает оптимальное паросочетание по швейцарской системе"""
     teams_copy = teams.copy()
     
@@ -157,21 +208,48 @@ def set_pairings(teams):
         jurors = Team("Jurors", mode([t.score for t in teams_copy]) if teams_copy else 0)
         teams_copy.append(jurors)
 
-    best_score = float("inf")
-    best_pairs = None
-
-    shuffle(teams_copy)
-
-    all_pairings = list(generate_pairings(teams_copy))
-    print(f"Рассматриваем {len(all_pairings)} вариантов паросочетания...")
-
-    for pairing in all_pairings:
-        score = pairing_score(pairing)
-        if score < best_score:
-            best_score = score
-            best_pairs = pairing
-
-    return best_pairs
+    if use_greedy or len(teams_copy) > 12:
+        # Для большого числа команд используем жадный алгоритм с несколькими попытками
+        print(f"Используем жадный алгоритм для {len(teams_copy)} команд...")
+        
+        best_score = float("inf")
+        best_pairs = None
+        
+        # Пробуем несколько раз с разными начальными перемешиваниями
+        for attempt in range(100):
+            shuffle(teams_copy)
+            pairs = greedy_pairing(teams_copy.copy())
+            score = pairing_score(pairs)
+            
+            if score < best_score:
+                best_score = score
+                best_pairs = pairs
+                
+                # Если нашли идеальное паросочетание, останавливаемся
+                if score == 0:
+                    break
+        
+        print(f"Лучший счет паросочетания: {best_score}")
+        return best_pairs
+    else:
+        # Для малого числа команд используем улучшенный случайный поиск
+        print(f"Рассматриваем до 1000 случайных вариантов для {len(teams_copy)} команд...")
+        
+        best_score = float("inf")
+        best_pairs = None
+        
+        for pairing in generate_limited_pairings(teams_copy, max_attempts=1000):
+            score = pairing_score(pairing)
+            if score < best_score:
+                best_score = score
+                best_pairs = pairing
+                
+                # Если нашли идеальное паросочетание, останавливаемся
+                if score == 0:
+                    break
+        
+        print(f"Лучший счет паросочетания: {best_score}")
+        return best_pairs
 
 
 def assign_jury_to_matches(pairs, jury_list, round_num):
@@ -245,14 +323,55 @@ def assign_jury_to_matches(pairs, jury_list, round_num):
     return matches_with_jury, unassigned_matches
 
 
-def print_round_schedule(matches_with_jury, round_num):
+def print_pairing_quality(pairs, teams_dict):
+    """Выводит информацию о качестве паросочетания"""
+    print("\n📊 Качество паросочетания:")
+    
+    total_diff = 0
+    replays = 0
+    
+    for team1, team2 in pairs:
+        diff = abs(team1.score - team2.score)
+        total_diff += diff
+        
+        if have_played_before(team1, team2):
+            replays += 1
+            print(f"  ⚠️  {team1.name} vs {team2.name} - ПОВТОР! (разница: {diff:.2f})")
+        elif diff > 1.0:
+            print(f"  ⚡ {team1.name} ({team1.score:.1f}) vs {team2.name} ({team2.score:.1f}) - разница: {diff:.2f}")
+    
+    avg_diff = total_diff / len(pairs) if pairs else 0
+    print(f"\n  Средняя разница в очках: {avg_diff:.2f}")
+    print(f"  Повторных встреч: {replays}")
+    
+    if replays == 0 and avg_diff < 0.5:
+        print("  ✅ Отличное паросочетание!")
+    elif replays == 0 and avg_diff < 1.0:
+        print("  ✅ Хорошее паросочетание")
+    elif replays > 0:
+        print("  ⚠️  Есть повторные встречи")
+    
+    print()
+
+
+def print_round_schedule(matches_with_jury, round_num, teams_dict):
     """Выводит расписание раунда"""
-    print(f"\n{'='*60}")
+    print(f"\n{'='*80}")
     print(f"РАУНД {round_num}")
-    print(f"{'='*60}")
+    print(f"{'='*80}")
+    
     for match in matches_with_jury:
-        print(f"{match['team1']:25} vs {match['team2']:25} | Жюри: {match['jury']}")
-    print(f"{'='*60}\n")
+        team1_name = match['team1']
+        team2_name = match['team2']
+        jury = match['jury']
+        
+        # Получаем очки команд
+        team1_score = teams_dict.get(team1_name).score if team1_name in teams_dict else 0
+        team2_score = teams_dict.get(team2_name).score if team2_name in teams_dict else 0
+        
+        print(f"{team1_name:25} ({team1_score:.1f}) vs {team2_name:25} ({team2_score:.1f}) | {jury}")
+    
+    print(f"{'='*80}\n")
 
 
 def create_sample_files():
@@ -302,7 +421,26 @@ if __name__ == "__main__":
     
     # Создаем пары
     teams_list = list(teams_dict.values())
-    pairs = set_pairings(teams_list)
+    
+    # Выбор метода парирования
+    if len(teams_list) > 12:
+        print(f"\n🚀 Автоматически выбран жадный алгоритм (команд: {len(teams_list)})")
+        pairs = set_pairings(teams_list, use_greedy=True)
+    else:
+        print(f"\nКоманд: {len(teams_list)}")
+        print("Выберите метод парирования:")
+        print("1. Жадный алгоритм (быстро, хорошее качество)")
+        print("2. Случайный поиск (медленнее, может найти лучше)")
+        
+        choice = input("Ваш выбор (Enter = жадный): ").strip()
+        
+        if choice == '2':
+            pairs = set_pairings(teams_list, use_greedy=False)
+        else:
+            pairs = set_pairings(teams_list, use_greedy=True)
+    
+    # Показываем качество паросочетания
+    print_pairing_quality(pairs, teams_dict)
     
     # Распределяем жюри
     if jury_list:
@@ -314,7 +452,7 @@ if __name__ == "__main__":
                 print(f"   {team1} vs {team2}")
         
         # Выводим расписание
-        print_round_schedule(matches_with_jury, current_round)
+        print_round_schedule(matches_with_jury, current_round, teams_dict)
         
         # Сохраняем в CSV
         save_results_to_csv(matches_with_jury, 'results.csv', append=True)
