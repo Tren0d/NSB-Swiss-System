@@ -317,7 +317,7 @@ def print_pairing_quality(pairs):
         elif diff > 1.0:
             print(f"  ⚡ {team1.name} ({team1.score:.1f}) vs {team2.name} ({team2.score:.1f}) - разница: {diff:.2f}")
     
-    print(f"\n  Средняя разница в очках: {total_diff:.3f}")
+    print(f"\n  Разница в очках: {total_diff:.3f}")
     print(f"  Повторных встреч: {replays}")
     
     if replays > 0:
@@ -344,27 +344,6 @@ def print_round_schedule(matches_with_jury, round_num, teams_dict):
         print(f"{team1_name:27} ({team1_score:.2f}) vs {team2_name:27} ({team2_score:.2f}) | {jury}")
     
     print(f"{'='*80}\n")
-
-
-def create_sample_files():
-    """Создает примеры CSV файлов"""
-    # Пример teams.csv
-    with open('teams.csv', 'w', encoding='utf-8', newline='') as file:
-        writer = csv.DictWriter(file, fieldnames=['team_name', 'school'])
-        writer.writeheader()
-        writer.writerow({'team_name': 'NEND', 'school': 'NIS Almaty'})
-        writer.writerow({'team_name': 'MA^3', 'school': 'Miras'})
-        writer.writerow({'team_name': 'Euler', 'school': 'BIL'})
-    
-    # Пример jury.csv
-    with open('jury.csv', 'w', encoding='utf-8', newline='') as file:
-        writer = csv.DictWriter(file, fieldnames=['name', 'forbidden_schools', 'forbidden_teams'])
-        writer.writeheader()
-        writer.writerow({'name': 'Иванов А.', 'forbidden_schools': 'NIS Almaty', 'forbidden_teams': ''})
-        writer.writerow({'name': 'Петрова Б.', 'forbidden_schools': 'Miras;BIL', 'forbidden_teams': ''})
-        writer.writerow({'name': 'Сидоров В.', 'forbidden_schools': '', 'forbidden_teams': 'Euler'})
-    
-    print("✅ Созданы примеры файлов teams.csv и jury.csv")
 
 
 # ОСНОВНАЯ ПРОГРАММА
