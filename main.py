@@ -147,8 +147,23 @@ def pairing_score(pairs):
     return score
 
 
+def limited_pairing(teams):
+    """Генерирует ограниченное количество случайных паросочетаний"""
+    teams_copy = teams.copy()
+    
+    shuffle(teams_copy)
+    pairs = []
+    
+    for i in range(0, len(teams_copy), 2):
+        if i + 1 < len(teams_copy):
+            pairs.append((teams_copy[i], teams_copy[i+1]))
+    
+    return pairs
+
+
 def greedy_pairing(teams):
     """Жадный алгоритм парирования - быстрый для небольшого числа команд"""
+    shuffle(teams)
     teams_sorted = sorted(teams, key=lambda t: t.score, reverse=True)
     pairs = []
     used = set()
@@ -171,7 +186,7 @@ def greedy_pairing(teams):
             
             # Если команды уже играли, добавляем большой штраф
             if played_before:
-                score_diff += 100
+                score_diff += 1000
             
             if score_diff < best_score_diff:
                 best_score_diff = score_diff
@@ -185,22 +200,7 @@ def greedy_pairing(teams):
     return pairs
 
 
-def generate_limited_pairings(teams, max_attempts=1000):
-    """Генерирует ограниченное количество случайных паросочетаний"""
-    teams_copy = teams.copy()
-    
-    for _ in range(max_attempts):
-        shuffle(teams_copy)
-        pairs = []
-        
-        for i in range(0, len(teams_copy), 2):
-            if i + 1 < len(teams_copy):
-                pairs.append((teams_copy[i], teams_copy[i+1]))
-        
-        yield pairs
-
-
-def set_pairings(teams, use_greedy=True):
+def set_pairings(teams):
     """Создает оптимальное паросочетание по швейцарской системе"""
     teams_copy = teams.copy()
     
@@ -208,48 +208,22 @@ def set_pairings(teams, use_greedy=True):
         jurors = Team("Jurors", mode([t.score for t in teams_copy]) if teams_copy else 0)
         teams_copy.append(jurors)
 
-    if use_greedy or len(teams_copy) > 12:
-        # Для большого числа команд используем жадный алгоритм с несколькими попытками
-        print(f"Используем жадный алгоритм для {len(teams_copy)} команд...")
+    best_score = 100000000
+    best_pairs = None
+    best_possible_score = pairing_score(greedy_pairing(teams))
+    times = 0
+
+    while best_score > best_possible_score and times < 1e8:
+        pairing = limited_pairing(teams)
+        score = pairing_score(pairing)
+        if score < best_score:
+            best_score = score
+            best_pairs = pairing
+            print(best_score)
+        times += 1
         
-        best_score = float("inf")
-        best_pairs = None
-        
-        # Пробуем несколько раз с разными начальными перемешиваниями
-        for attempt in range(100):
-            shuffle(teams_copy)
-            pairs = greedy_pairing(teams_copy.copy())
-            score = pairing_score(pairs)
-            
-            if score < best_score:
-                best_score = score
-                best_pairs = pairs
-                
-                # Если нашли идеальное паросочетание, останавливаемся
-                if score == 0:
-                    break
-        
-        print(f"Лучший счет паросочетания: {best_score}")
-        return best_pairs
-    else:
-        # Для малого числа команд используем улучшенный случайный поиск
-        print(f"Рассматриваем до 1000 случайных вариантов для {len(teams_copy)} команд...")
-        
-        best_score = float("inf")
-        best_pairs = None
-        
-        for pairing in generate_limited_pairings(teams_copy, max_attempts=1000):
-            score = pairing_score(pairing)
-            if score < best_score:
-                best_score = score
-                best_pairs = pairing
-                
-                # Если нашли идеальное паросочетание, останавливаемся
-                if score == 0:
-                    break
-        
-        print(f"Лучший счет паросочетания: {best_score}")
-        return best_pairs
+    print(f"Лучший счет паросочетания: {best_score}")
+    return best_pairs
 
 
 def assign_jury_to_matches(pairs, jury_list, round_num):
@@ -425,7 +399,7 @@ if __name__ == "__main__":
     # Выбор метода парирования
     if len(teams_list) > 12:
         print(f"\n🚀 Автоматически выбран жадный алгоритм (команд: {len(teams_list)})")
-        pairs = set_pairings(teams_list, use_greedy=True)
+        pairs = set_pairings(teams_list)
     else:
         print(f"\nКоманд: {len(teams_list)}")
         print("Выберите метод парирования:")
@@ -435,9 +409,9 @@ if __name__ == "__main__":
         choice = input("Ваш выбор (Enter = жадный): ").strip()
         
         if choice == '2':
-            pairs = set_pairings(teams_list, use_greedy=False)
+            pairs = set_pairings(teams_list)
         else:
-            pairs = set_pairings(teams_list, use_greedy=True)
+            pairs = set_pairings(teams_list)
     
     # Показываем качество паросочетания
     print_pairing_quality(pairs, teams_dict)
