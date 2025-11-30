@@ -73,8 +73,7 @@ def load_teams_from_csv(filename='teams.csv'):
             reader = csv.DictReader(file)
             for row in reader:
                 team_name = row['team_name']
-                school = row.get('school', '')
-                teams[team_name] = Team(team_name, school=school)
+                teams[team_name] = Team(team_name)
     except FileNotFoundError:
         print(f"Файл {filename} не найден. Создайте его по образцу.")
     return teams
@@ -106,9 +105,9 @@ def load_results_from_csv(teams, filename='results.csv'):
                 team2_name = row['team2']
                 score1 = float(row['score1'])
                 score2 = float(row['score2'])
-                
-                if team1_name in teams and team2_name in teams:
+                if team1_name in teams:
                     teams[team1_name].add_opponent(team2_name, score1)
+                if team2_name in teams:
                     teams[team2_name].add_opponent(team1_name, score2)
     except FileNotFoundError:
         print(f"Файл {filename} не найден. Начинаем с нуля.")
